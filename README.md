@@ -219,7 +219,7 @@ dmerkuriev microservices repository
 	
 Перепишем Dockerfile для сборки образа **ui** на основе Alpine.
 	
-	$ cat ui/Dockerfile
+	$ cat ui/Dockerfile.3
 	FROM ruby:2.2-alpine
 	
 	ENV POST_SERVICE_HOST post
@@ -243,7 +243,7 @@ dmerkuriev microservices repository
 	
 Перепишем Dockerfile для сборки образа **comment** на основе Alpine.
 
-	$ cat comment/Dockerfile
+	$ cat comment/Dockerfile.2
 	FROM ruby:2.2-alpine
 	
 	ENV COMMENT_DATABASE_HOST comment_db
