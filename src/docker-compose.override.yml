@@ -1,0 +1,25 @@
+version: '3.3'
+services:
+  ui:
+    volumes:
+      - ui:/app
+    entrypoint: 
+      - puma
+      - --debug 
+      - -w 2
+  post:
+    volumes:
+      - post-py:/app
+  comment:
+    volumes:
+      - comment:/app
+    entrypoint: 
+      - puma
+      - --debug 
+      - -w 2
+
+volumes:
+  ui:
+  post-py:
+  comment:
+
