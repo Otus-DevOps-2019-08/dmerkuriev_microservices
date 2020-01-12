@@ -815,4 +815,372 @@ $ docker-compose up -f my-override-1.yml my-overide-2.yml
 	root       307  2.5  0.0  18240  3192 pts/0    Ss   11:03   0:00 bash
 	root       324  0.0  0.0  34424  2868 pts/0    R+   11:03   0:00 ps aux
 
+# HomeWork 15 (Gitlab-ci-1)
+---
 
+**В рамках задания было сделано:**
+---
+1. Развернул новую ВМ на gcloud под gitab-ci.
+
+		$ export GOOGLE_PROJECT=docker-263919
+		$ docker-machine create --driver google \
+		--google-machine-image https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/family/ubuntu-1604-lts \
+		--google-zone europe-west1-b \
+		--google-machine-type n1-standard-1 \
+		--google-disk-size 50 \
+		gitlab-ci
+		
+2. Проверил что ВМ создана и подключимся к ней.
+
+		$ docker-machine ls
+		NAME        ACTIVE   DRIVER   STATE     URL                        SWARM   DOCKER     ERRORS
+		gitlab-ci   -        google   Running   tcp://35.195.52.232:2376           v19.03.5
+		
+		$ eval $(docker-machine env gitlab-ci)
+		$ docker-machine ssh gitlab-ci
+
+3. Ставим docker-compose.
+
+		$ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+		$ add-apt-repository "deb https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+		$ apt-get update
+		$ apt-get install docker-compose
+
+4. Cоздаем необходимые директории и подготавливаем docker-compose.yml.
+
+		$ sudo mkdir -p /srv/gitlab/config /srv/gitlab/data /srv/gitlab/logs
+		$ cd /srv/gitlab/
+		$ sudo wget https://gist.githubusercontent.com/Nklya/c2ca40a128758e2dc2244beb09caebe1/raw/e9ba646b06a597734f8dfc0789aae79bc43a7242/docker-compose.yml
+		$ cat docker-compose.yml
+		web:
+  		  image: 'gitlab/gitlab-ce:latest'
+  		  restart: always
+  		  hostname: 'gitlab.example.com'
+  		  environment:
+    	    GITLAB_OMNIBUS_CONFIG: |
+      	      external_url 'http://35.195.52.232'
+  		  ports:
+    	    - '80:80'
+    	    - '443:443'
+    	    - '2222:22'
+  		  volumes:
+    	    - '/srv/gitlab/config:/etc/gitlab'
+    	    - '/srv/gitlab/logs:/var/log/gitlab'
+    	    - '/srv/gitlab/data:/var/opt/gitlab'
+
+5. Прописываем в docker-compose.yml IP адрес ВМ и запускаем docker-compose.yml
+
+		$ sudo docker-compose up -d
+	
+	содержимое файла docker-compose.yml взято по ссылке:  
+	https://docs.gitlab.com/omnibus/docker/README.html#install-gitlab-using-docker-compose
+
+6. Откроем в браузере http://35.195.52.232.  
+	Установим пароль пользователя root.  
+	Залогинемся в Gitlab.  
+	Выключаем регистрацию новых пользователей.  
+	Создаем новую группу homework.
+
+7. Добавляем remote в dmerkuriev_microservices
+
+		$ git checkout -b gitlab-ci-1
+		$ git remote add gitlab http://35.195.52.232/homework/example.git
+		$ git push gitlab gitlab-ci-1
+
+8. Для того, что бы определить CI/CD Pipeline для проекта, добавим в репозиторий файл .gitlab-ci.yml
+
+		$ cat .gitlab-ci.yml
+		stages:
+  		  - build
+  		  - test
+  		  - deploy
+		build_job:
+  		  stage: build
+  		  script:
+    	    - echo 'Building'
+		test_unit_job:
+  		  stage: test
+  		  script:
+    	    - echo 'Testing 1'
+		test_integration_job:
+  		  stage: test
+  		  script:
+    	    - echo 'Testing 2'
+		deploy_job:
+  		  stage: deploy
+  		  script:
+    	    - echo 'Deploy'
+
+		$ git add .gitlab-ci.yml
+		$ git commit -m "add pipeline definition"
+		$ git push gitlab gitlab-ci-1
+
+9. Запустим Runner и зарегистрируем его в интерактивном режиме.  
+	Перед тем, как запускать и регистрировать runner нужно получить токен. Переходим на страницу:  
+	homework > example > CI/CD Settings > Runner и нажимаем expand.  
+	Скопируем токен, он пригодится позднее.
+	На сервере, где работает Gitlab CI выполним команду:
+		
+		$ sudo docker run -d --name gitlab-runner --restart always \
+		-v /srv/gitlab-runner/config:/etc/gitlab-runner \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		gitlab/gitlab-runner:latest
+		
+		$ sudo  docker exec -it gitlab-runner gitlab-runner register --run-untagged --locked=false
+		Runtime platform     arch=amd64 os=linux pid=13 revision=ac8e767a version=12.6.0
+		Running in system-mode.
+		
+		Please enter the gitlab-ci coordinator URL (e.g. https://gitlab.com/):
+		http://35.195.52.232/
+		Please enter the gitlab-ci token for this runner:
+		XXXXXXXXXXXXXXXX
+		Please enter the gitlab-ci description for this runner:
+		[f14c01a7883d]: my-runner
+		Please enter the gitlab-ci tags for this runner (comma separated):
+		linux,xenial,ubuntu,docker
+		Registering runner... succeeded                     runner=6uSaQgNq
+		Please enter the executor: docker, docker-ssh, parallels, shell, virtualbox, kubernetes, custom, docker+machine, docker-ssh+machine, ssh:
+		docker
+		Please enter the default Docker image (e.g. ruby:2.6):
+		alpine:latest
+		Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
+		
+	Переходим в веб-интерфейс и видим:  
+	Runners activated for this project  
+	zpA_nBAr  
+	my-runner
+
+10. Идем в вэб-интерфейс смотрим, что пайаплайн запустился и отработал. Нажимаем иконки, смотрим.
+11. Добавим тестирование приложения reddit в pipeline.
+
+	Добавим исходный код reddit в репозиторий
+	
+		$ git clone https://github.com/express42/reddit.git && rm -rf ./reddit/.git
+		$ git add reddit/
+		$ git commit -m "Add reddit app"
+		$ git push gitlab gitlab-ci-1
+		
+	Изменим описание пайплайна в .gitlab-ci.yml
+	
+		$ cat .gitlab-ci.yml
+		image: ruby:2.4.2
+		
+		stages:
+  		  - build
+  		  - test
+  		  - deploy
+		
+		variables:
+  		  DATABASE_URL: 'mongodb://mongo/user_posts'
+		
+		before_script:
+  		  - cd reddit
+  		  - bundle install
+		
+		build_job:
+  		  stage: build
+  		  script:
+    	    - echo 'Building'
+		
+		test_unit_job:
+  		  stage: test
+  		  services:
+    	    - mongo:latest
+  		  script:
+    	    - ruby simpletest.rb
+
+		test_integration_job:
+  		  stage: test
+  		  script:
+    	    - echo 'Testing 2'
+		
+		deploy_job:
+  		  stage: deploy
+  		  script:
+    	    - echo 'Deploy'
+
+    В описании pipeline мы добавили вызов теста в файле simpletest.rb, нужно создать его в папке reddit:
+    
+    	$ cat reddit/simpletest.rb
+		require_relative './app'
+		require 'test/unit'
+		require 'rack/test'
+		
+		set :environment, :test
+		
+		class MyAppTest < Test::Unit::TestCase
+  		  include Rack::Test::Methods
+		
+  		  def app
+    	    Sinatra::Application
+  		  end
+		  
+  		  def test_get_request
+    	    get '/'
+            assert last_response.ok?
+          end
+        end
+
+	Последним шагом нам нужно добавить библиотеку для тестирования в reddit/Gemfile приложения.
+	
+		$ cat reddit/Gemfile
+		...
+		gem 'rack-test'
+		...
+
+	Теперь на каждое изменение в коде приложения будет запущен тест
+
+12. Изменим пайплайн таким образом, чтобы job deploy стал определением окружения dev, на которое условно будет выкатываться каждое изменение в коде проекта.  
+Перепишем .gitlab-ci.yml  
+Переименуем deploy stage в review  
+deploy_job заменим на deploy\_dev\_job  
+Добавим environment
+		
+		$ cat .gitlab-ci.yml
+		image: ruby:2.4.2
+		
+		stages:
+  		  ...
+  		  - review
+		...
+		
+		
+		deploy_dev_job:
+  		  stage: review
+  		  script:
+    	    - echo 'Deploy'
+    	  environment:
+    	    name: dev
+    	    url: http://dev.example.com
+
+13. Если на dev мы можем выкатывать последнюю версию кода, то к production окружению это может быть неприменимо, если, конечно, вы не стремитесь к continuous deployment.  
+Определим два новых этапа: stage и production, первый будет содержать job имитирующий выкатку на staging окружение, второй на production окружение.  
+Определим эти job таким образом, чтобы они запускались с кнопки.
+
+		$ cat .gitlab-ci.yml
+		image: ruby:2.4.2
+
+		stages:
+ 		  ...
+  		  - stage
+  		  - production
+  		...
+  		
+  		staging:
+  		  stage: stage
+  		  when: manual
+  		  script:
+    	    - echo 'Deploy'
+  		  environment:
+    	    name: stage
+    	    url: https://beta.example.com
+
+		production:
+  		  stage: production
+  		  when: manual
+  		  script:
+    	    - echo 'Deploy'
+  		  environment:
+    	    name: production
+    	    url: https://example.com
+
+14. Обычно, на production окружение выводится приложение с явно зафиксированной версией (например, 2.4.10).  
+Добавим в описание pipeline директиву, которая не позволит нам выкатить на staging и production код,
+не помеченный с помощью тэга в git.  
+Директива only описывает список условий, которые должны быть истинны, чтобы job мог запуститься.
+Регулярное выражение слева означает, что должен стоять semver тэг в git, например, 2.4.10.
+
+		$ cat .gitlab-ci.yml
+		...
+		staging:
+  		  stage: stage
+  		  when: manual
+  		  only:
+    	    - /^\d+\.\d+\.\d+/
+  		  script:
+    	    - echo 'Deploy'
+  		  environment:
+    	    name: stage
+    	    url: https://beta.example.com
+
+		production:
+  		  stage: production
+  		  when: manual
+  		  only:
+    	    - /^\d+\.\d+\.\d+/
+  		  script:
+    	    - echo 'Deploy'
+  		  environment:
+    	    name: production
+    	    url: https://example.com
+
+	Теперь при внесении изменений без тега запустится пайплайн без job staging и production.  
+	Изменение, помеченное тэгом в git запустит полный пайплайн.
+	
+		$ git add .gitlab-ci.yml
+		$ git commit -m "Add tag for stage and prod"
+		$ git tag 2.4.10
+		$ git push gitlab gitlab-ci-1 --tags
+
+15. Динамическое окружение.  
+	Gitlab CI позволяет определить динамические окружения, это мощная функциональность позволяет вам иметь выделенный стенд для, например, каждой feature-ветки в git.  
+Определяются динамические окружения с помощью переменных, доступных в .gitlab-ci.yml.  
+Этот job (branch review) определяет динамическое окружение для каждой ветки в репозитории, кроме ветки master.
+
+		$ cat .gitlab-ci.yml
+		image: ruby:2.4.2
+		...
+
+		deploy_dev_job:
+  		  stage: review
+  		  script:
+    	    - echo 'Deploy'
+  		  environment:
+    	    name: dev
+    	    url: http://dev.example.com
+
+		branch review:
+  		  stage: review
+  		  script: echo "Deploy to $CI_ENVIRONMENT_SLUG"
+  		  environment:
+    	    name: branch/$CI_COMMIT_REF_NAME
+   		    url: http://$CI_ENVIRONMENT_SLUG.example.com
+  		  only:
+    	    - branches
+  		  except:
+    	    - master
+
+		staging:
+  		  stage: stage
+  		  when: manual
+  		  only:
+    	    - /^\d+\.\d+\.\d+/
+  		...
+  Теперь, на каждую ветку в git отличную от master Gitlab CI будет определять новое окружение.  
+  Eсли создать ветки new-feature и bugfix, то на странице окружений они будут в review ветке.
+
+16. Задание со *.  
+	* В шаг build добавить сборку контейнера с приложением reddit.  
+	Деплойте контейнер с reddit на созданный для ветки сервер.  
+	
+		Задание показалось довольно объемным, с наскока решить не получилось. Отложил до будущих времен.
+
+
+17. Задание со *.  
+	* Продумайте автоматизацию развертывания и регистрации Gitlab CI Runner. В больших организациях количество Runners может превышать 50 и более, сетапить их руками становится проблематично.  
+	Реализацию функционала добавьте в репозиторий в папку gitlab-ci.  
+	
+		Для автоматизации напишем простой скрипт gitlab_runner_install.sh  
+		Ключи для установки gitlab-runner возьмем из документации:  
+		https://docs.gitlab.com/runner/register/index.html
+		Запустить скрипт можно коммандой:
+		
+			$ sudo docker_runner_install.sh <gitlab-url> <project-registration-token>
+
+	* Настройте интеграцию вашего Pipeline с тестовым Slack-чатом, который вы использовали ранее. Для этого перейдите в Project > Settings > Integrations > Slack notifications.  
+	Нужно установить active, выбрать события и заполнить поля с URL вашего Slack webhook.  
+	Добавьте ссылку на канал в слаке, в котором можно проверить работу оповещений, в файл README.md.
+
+		Настроил интеграцию gitlab с slack-чатом:  
+		https://devops-team-otus.slack.com/archives/CN8E22PU1
+	
